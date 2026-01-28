@@ -8,8 +8,11 @@ def render_boq_tab(data_proyek):
 
     # --- 1. SETUP GOOGLE API (OPSIONAL) ---
     with st.expander("🤖 Asisten AI (Google Gemini) - Penjelas Rumus"):
-        api_key = st.text_input("Masukkan Google API Key:", type="password", help="Dapatkan di aistudio.google.com")
-        if api_key:
+        # Cek apakah ada di secrets, kalau tidak ada baru minta input manual
+if "GOOGLE_API_KEY" in st.secrets:
+    api_key = st.secrets["GOOGLE_API_KEY"]
+else:
+    api_key = st.text_input("Masukkan Google API Key:", type="password")
             genai.configure(api_key=api_key)
             st.success("Google AI Terhubung! Klik tombol 'Tanya AI' di tabel bawah untuk penjelasan teknis.")
         else:
@@ -184,4 +187,5 @@ def render_boq_tab(data_proyek):
 # import boq_tab
 # Lalu panggil fungsi ini di dalam tab baru:
 # with tab_boq:
+
 #     boq_tab.render_boq_tab(st.session_state['data_proyek'])
