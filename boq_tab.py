@@ -6,7 +6,7 @@ def render_boq_tab(data_proyek):
     st.header("📑 Back-Up Data & Bill of Quantities (BoQ)")
     st.caption("Standar Perhitungan Volume: Permen PUPR No. 1 Tahun 2022 / No. 182 Tahun 2025")
 
-    # --- 1. SETUP GOOGLE API (OPSIONAL) ---
+    # --- 1. SETUP GOOGLE API ---
     # Cek apakah ada di secrets, kalau tidak ada baru minta input manual
     if "GOOGLE_API_KEY" in st.secrets:
         api_key = st.secrets["GOOGLE_API_KEY"]
@@ -15,10 +15,10 @@ def render_boq_tab(data_proyek):
         with st.expander("🤖 Asisten AI (Google Gemini) - Penjelas Rumus"):
             api_key = st.text_input("Masukkan Google API Key:", type="password", help="Dapatkan di aistudio.google.com")
     
+    # Konfigurasi Awal
     if api_key:
         try:
             genai.configure(api_key=api_key)
-            # Tes konfigurasi dummy (opsional) atau langsung lanjut
         except Exception as e:
             st.error(f"API Key Error: {e}")
 
@@ -141,7 +141,6 @@ def render_boq_tab(data_proyek):
     # --- 4. FITUR TANYA AI ---
     st.divider()
     
-    # Hanya render fitur AI jika API Key tersedia
     if api_key:
         col_ai1, col_ai2 = st.columns([1, 3])
         
@@ -171,14 +170,12 @@ def render_boq_tab(data_proyek):
                     
                     Jelaskan apa pekerjaan ini dan kenapa rumusnya begitu (secara geometri).
                     """
-                    model = genai.GenerativeModel('gemini-pro')
+                    # --- PERUBAHAN DI SINI: MENGGUNAKAN GEMINI 1.5 FLASH ---
+                    model = genai.GenerativeModel('gemini-1.5-flash')
                     response = model.generate_content(prompt)
                     st.markdown(f"**Penjelasan Ahli ({selected_item}):**")
                     st.write(response.text)
                 except Exception as e:
                     st.error(f"Gagal menghubungi AI: {e}")
     else:
-        st.caption("Masukkan API Key Google di secrets.toml atau input manual untuk mengaktifkan fitur AI.")
-
-# !!! PENTING: TIDAK BOLEH ADA KODE EKSEKUSI DI BAWAH SINI !!!
-# Jangan tambahkan 'boq_tab.render_boq_tab(...)' di sini.
+        st.warning("⚠️ API Key belum terdeteksi. Pastikan file secrets.toml sudah benar formatnya.")
