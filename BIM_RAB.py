@@ -3,7 +3,6 @@ import pandas as pd
 import math
 import json
 from io import BytesIO
-import boq_tab  # <--- TAMBAHKAN INI
 
 # --- 1. CONFIGURASI & STATE MANAGEMENT ---
 st.set_page_config(page_title="Pro QS V.12: AHSP SDA Bengkulu", layout="wide", page_icon="🏗️")
@@ -313,8 +312,7 @@ with st.sidebar:
 st.title("🏗️ Pro QS V.12: AHSP SDA Bengkulu")
 st.caption("Standar: SE Menteri PUPR Bidang SDA | Harga: Provinsi Bengkulu")
 
-# Tambahkan "Back-Up Volume" di daftar nama tab dan tambahkan variabel tab5
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["➕ Input", "📋 List", "📊 RAB Detail", "📑 Analisa Harga (Formulir)", "🧮 Back-Up Volume"])
+tab1, tab2, tab3, tab4 = st.tabs(["➕ Input", "📋 List", "📊 RAB Detail", "📑 Analisa Harga (Formulir)"])
 
 # === TAB 1: INPUT (TETAP SAMA 100%) ===
 with tab1:
@@ -370,32 +368,15 @@ with tab1:
                 st.divider()
                 st.write(f"**Analisa: {calc['info_struktur']}**")
 
-    # Di dalam BIM_RAB.py (Tab 1), cari bagian tombol "Simpan Item"
-if st.button("Simpan Item", type="primary"):
-    # ... (kode validasi nama) ...
-    
-    # KUMPULKAN DIMENSI (Dictionary baru)
-    dimensi_data = {}
-    if kategori == "Saluran (Linear)":
-        if tipe_kons == "Beton Bertulang":
-            dimensi_data = {"h": h, "b": b, "m": m, "t_cm": t_cm, "panjang": panjang}
+    if st.button("Simpan Item", type="primary"):
+        if not nama_item: st.warning("Isi Nama!")
         else:
-            dimensi_data = {"h": h, "l_atas": l_atas, "l_bawah": l_bawah, "panjang": panjang}
-    else:
-        # Tambahkan logika untuk Box/Terjunan sesuai input
-        pass 
-
-    # SIMPAN LENGKAP
-    item_data = {
-        "nama": nama_item, 
-        "tipe": tipe_final, 
-        "panjang": panjang if kategori == "Saluran (Linear)" else 0, 
-        "dimensi": dimensi_data,  # <--- INI TAMBAHAN PENTING
-        "vol": calc
-    }
-    st.session_state['data_proyek'].append(item_data)
-
-
+            tipe_final = jenis_bang if kategori != "Saluran (Linear)" else ("Saluran Beton" if tipe_kons == "Beton Bertulang" else "Saluran Batu")
+            if is_rehab: nama_item += " (REHAB)"
+            item_data = {"nama": nama_item, "tipe": tipe_final, "panjang": 0, "vol": calc}
+            if kategori == "Saluran (Linear)": item_data["panjang"] = panjang
+            st.session_state['data_proyek'].append(item_data)
+            st.success("Tersimpan!")
 
 # === TAB 2 & 3 (LIST & RAB DETAIL) ===
 with tab2:
@@ -518,13 +499,3 @@ with tab4:
         | **D. Overhead ({overhead}%)** | **{ovr_val:,.2f}** |
         | **E. Harga Satuan** | **{jum_final:,.2f}** |
         """)
-
-# ... (kode tab4 sebelumnya di atas sini) ...
-
-# === TAB 5: BACK-UP VOLUME (BOQ) ===
-with tab5:
-    # Pastikan data proyek diambil dari session state
-    if 'data_proyek' in st.session_state:
-        boq_tab.render_boq_tab(st.session_state['data_proyek'])
-    else:
-        st.warning("Data proyek belum tersedia.")
