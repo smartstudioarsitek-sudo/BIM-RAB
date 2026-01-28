@@ -2,25 +2,80 @@ import streamlit as st
 import pandas as pd
 import google.generativeai as genai
 
+# --- FUNGSI CERDAS: AUTO-DETECT MODEL ---
+def get_best_model(api_key):
+    """
+    Mencari model terbaik yang tersedia untuk API Key pengguna.
+    Prioritas: Gemini 1.5 Flash -> Gemini 1.5 Pro -> Gemini 1.0 Pro -> Gemini Pro
+    """
+    try:
+        genai.configure(api_key=api_key)
+        
+        # 1. Ambil daftar semua model yang tersedia untuk key ini
+        available_models = []
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                available_models.append(m.name)
+        
+        # 2. Cek Prioritas (Dari yang tercepat/terbaru)
+        priority_list = [
+            'models/gemini-1.5-flash',
+            'models/gemini-1.5-pro',
+            'models/gemini-1.0-pro',
+            'models/gemini-pro'
+        ]
+        
+        selected_model_name = None
+        
+        # Cek apakah model prioritas ada di daftar tersedia
+        for priority in priority_list:
+            if priority in available_models:
+                selected_model_name = priority
+                break
+        
+        # Jika tidak ada yang cocok, ambil model 'gemini' pertama yang ketemu
+        if not selected_model_name:
+            for m in available_models:
+                if 'gemini' in m:
+                    selected_model_name = m
+                    break
+        
+        # Kembalikan objek model jika ketemu
+        if selected_model_name:
+            return genai.GenerativeModel(selected_model_name), selected_model_name
+        else:
+            return None, "Tidak ada model Gemini ditemukan."
+            
+    except Exception as e:
+        return None, str(e)
+
+# --- RENDERING TAB ---
 def render_boq_tab(data_proyek):
     st.header("📑 Back-Up Data & Bill of Quantities (BoQ)")
     st.caption("Standar Perhitungan Volume: Permen PUPR No. 1 Tahun 2022 / No. 182 Tahun 2025")
 
     # --- 1. SETUP GOOGLE API ---
-    # Cek apakah ada di secrets, kalau tidak ada baru minta input manual
+    api_key = None
+    
+    # Cek di secrets
     if "GOOGLE_API_KEY" in st.secrets:
         api_key = st.secrets["GOOGLE_API_KEY"]
     else:
-        # Fallback jika secrets belum disetting
+        # Fallback input manual
         with st.expander("🤖 Asisten AI (Google Gemini) - Penjelas Rumus"):
             api_key = st.text_input("Masukkan Google API Key:", type="password", help="Dapatkan di aistudio.google.com")
     
-    # Konfigurasi Awal
+    # Variabel untuk menampung model aktif
+    model_ai = None
+    model_name_log = ""
+    
+    # Konfigurasi Awal & Auto-Detect
     if api_key:
-        try:
-            genai.configure(api_key=api_key)
-        except Exception as e:
-            st.error(f"API Key Error: {e}")
+        model_ai, status_msg = get_best_model(api_key)
+        if model_ai:
+            st.toast(f"✅ AI Siap: Terhubung ke {status_msg}", icon="🤖")
+        else:
+            st.error(f"⚠️ Gagal menghubungkan AI: {status_msg}")
 
     if not data_proyek:
         st.warning("Belum ada data proyek. Silakan input data di Tab 1.")
@@ -34,10 +89,9 @@ def render_boq_tab(data_proyek):
         nama = item['nama']
         tipe = item['tipe']
         vol_data = item['vol']
-        # Ambil dimensi jika ada
         dim = item.get('dimensi', {}) 
 
-        # Header Item Utama
+        # Header Item
         boq_rows.append({
             "No": f"**{no_item}**", 
             "Uraian Pekerjaan": f"**{nama}**", 
@@ -49,7 +103,7 @@ def render_boq_tab(data_proyek):
         })
 
         # --- LOGIKA PENURUNAN RUMUS (BREAKDOWN) ---
-        # 1. Galian Tanah
+        # 1. Galian
         if vol_data.get('vol_galian', 0) > 0:
             rumus_txt = ""
             calc_txt = ""
@@ -57,7 +111,6 @@ def render_boq_tab(data_proyek):
                 h_galian = dim.get('h', 0) + (dim.get('t_cm', 0)/100) + 0.2
                 l_bawah_g = dim.get('b', 0) + 2*(dim.get('t_cm', 0)/100) + 0.4
                 l_atas_g = l_bawah_g + (2 * 0.5 * h_galian) 
-                
                 rumus_txt = "((Lb + La)/2) x H x P"
                 calc_txt = f"(({l_bawah_g:.2f}+{l_atas_g:.2f})/2) x {h_galian:.2f} x {dim.get('panjang',0)}"
             
@@ -68,7 +121,7 @@ def render_boq_tab(data_proyek):
                 "Volume": f"{vol_data['vol_galian']:.3f}", "Satuan": "m3"
             })
 
-        # 2. Beton Struktur
+        # 2. Beton
         if vol_data.get('vol_beton', 0) > 0:
             rumus_txt = ""
             calc_txt = ""
@@ -77,7 +130,6 @@ def render_boq_tab(data_proyek):
                 h = dim.get('h', 0)
                 b = dim.get('b', 0)
                 t = dim.get('t_cm', 0)/100
-                
                 rumus_txt = "((2H + B) x t) x P"
                 calc_txt = f"((2x{h} + {b}) x {t}) x {p}"
             
@@ -118,25 +170,14 @@ def render_boq_tab(data_proyek):
     df_boq = pd.DataFrame(boq_rows)
     
     st.markdown("### 📋 Tabel Perhitungan Volume (BoQ)")
+    st.markdown("""<style>.stDataFrame td {font-family: 'Consolas', sans-serif; font-size: 0.9rem;} .stDataFrame th {background-color: #2c3e50; color: white;}</style>""", unsafe_allow_html=True)
     
-    st.markdown("""
-    <style>
-        .stDataFrame td {font-family: 'Consolas', sans-serif; font-size: 0.9rem;}
-        .stDataFrame th {background-color: #2c3e50; color: white;}
-    </style>
-    """, unsafe_allow_html=True)
-    
-    st.dataframe(
-        df_boq,
-        column_config={
-            "No": st.column_config.TextColumn("No", width="small"),
-            "Uraian Pekerjaan": st.column_config.TextColumn("Uraian Pekerjaan", width="large"),
-            "Rumus / Dimensi": st.column_config.TextColumn("Rumus", width="medium"),
-            "Perhitungan": st.column_config.TextColumn("Detail Hitungan", width="medium"),
-        },
-        hide_index=True,
-        use_container_width=True
-    )
+    st.dataframe(df_boq, column_config={
+        "No": st.column_config.TextColumn("No", width="small"),
+        "Uraian Pekerjaan": st.column_config.TextColumn("Uraian Pekerjaan", width="large"),
+        "Rumus / Dimensi": st.column_config.TextColumn("Rumus", width="medium"),
+        "Perhitungan": st.column_config.TextColumn("Detail Hitungan", width="medium"),
+    }, hide_index=True, use_container_width=True)
 
     # --- 4. FITUR TANYA AI ---
     st.divider()
@@ -145,20 +186,20 @@ def render_boq_tab(data_proyek):
         col_ai1, col_ai2 = st.columns([1, 3])
         
         with col_ai1:
-            st.info("**Konsultan Virtual**")
-            # Filter hanya item anak (yang punya indentasi/sub-item)
+            st.info(f"**Konsultan Virtual**\nStatus: {'✅ Online' if model_ai else '❌ Offline'}")
             pilihan_item = [row['Uraian Pekerjaan'] for row in boq_rows if "  -" in str(row['Uraian Pekerjaan'])]
             
             if not pilihan_item:
-                st.caption("Tidak ada item detail untuk dianalisa.")
+                st.caption("Pilih item detail.")
                 selected_item = None
             else:
                 selected_item = st.selectbox("Pilih Item:", pilihan_item)
-                
-            ask_btn = st.button("❓ Jelaskan Perhitungan")
+            
+            # Disable tombol jika model belum siap
+            ask_btn = st.button("❓ Jelaskan Perhitungan", disabled=(not model_ai))
             
         with col_ai2:
-            if ask_btn and selected_item:
+            if ask_btn and selected_item and model_ai:
                 try:
                     row_data = df_boq[df_boq['Uraian Pekerjaan'] == selected_item].iloc[0]
                     prompt = f"""
@@ -168,14 +209,16 @@ def render_boq_tab(data_proyek):
                     Rumus: {row_data['Rumus / Dimensi']}
                     Volume: {row_data['Volume']} {row_data['Satuan']}
                     
-                    Jelaskan apa pekerjaan ini dan kenapa rumusnya begitu (secara geometri).
+                    Jelaskan apa pekerjaan ini dan kenapa rumusnya begitu (secara geometri/teknis).
                     """
-                    # --- PERUBAHAN DI SINI: MENGGUNAKAN GEMINI 1.5 FLASH ---
-                    model = genai.GenerativeModel('gemini-1.5-flash')
-                    response = model.generate_content(prompt)
-                    st.markdown(f"**Penjelasan Ahli ({selected_item}):**")
-                    st.write(response.text)
+                    
+                    with st.spinner("Sedang menganalisa..."):
+                        response = model_ai.generate_content(prompt)
+                        st.markdown(f"**Penjelasan Ahli ({selected_item}):**")
+                        st.write(response.text)
+                        
                 except Exception as e:
-                    st.error(f"Gagal menghubungi AI: {e}")
+                    st.error(f"Terjadi kesalahan saat menghubungi AI: {e}")
+                    st.caption("Tips: Coba refresh halaman atau cek kuota API Key.")
     else:
-        st.warning("⚠️ API Key belum terdeteksi. Pastikan file secrets.toml sudah benar formatnya.")
+        st.warning("⚠️ Masukkan Google API Key di secrets.toml untuk mengaktifkan AI.")
